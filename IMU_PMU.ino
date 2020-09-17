@@ -1,13 +1,9 @@
 /*
    Author: Marco Stunder & Daniel Stojicic
    Date: 06.09.2020
-   Testcode fuer die Validierung des Algorithmuses
+   Testcode fuer die Validierung des Algorithmus
 */
-/* Algorithmus
 
-
-
-*/
 #include <Adafruit_INA260.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
@@ -80,7 +76,6 @@ class Matrix
         *(data + i) = array[i];
       }
     }
-
     Matrix operator*(Matrix &b)
     {
       Matrix temp(this->rows, b.columns);
@@ -135,6 +130,10 @@ class Matrix
     }
 };
 
+double getfirstValue(Matrix a)
+{
+  return *a.data;
+}
 
 void print_matrix(Matrix &a)
 {
@@ -187,6 +186,8 @@ void Motor_current_stabelazation(int current, bool direction)
   //grobes mapen von gewünschtem strom zu ungefährem duty cycle welcher diesen strom erzeugen soll
   set_value_current = map(current, Min_current, Max_current, 0, 255);
   // je nach richtungsvorgabe (das wäre + oder - beim im ALGORITHMUS berechneten strom) wird RPWM oder LPWM benutzt
+  //Serial.print("Mapped Current(PWM): ");
+  //Serial.println(set_value_current);
   if (direction == true)
   {
     analogWrite(RPWM_pin, set_value_current);
@@ -197,10 +198,11 @@ void Motor_current_stabelazation(int current, bool direction)
   }
   //kurz warten und dann echten wert einlesen
   delay(10);
-  int  real_value_current = 0; //Read current wobei dieser in mA zurückgegeben werden musss
-  // runden von z.B. 2543 auf 25 um eine endliche abfrage zu haben weil echter strom und gewünschter strom wsl nie 100% gleich sind
-  while (real_value_current / 100 != current / 100)
-  {
+  /*
+    int  real_value_current = 0; //Read current wobei dieser in mA zurückgegeben werden musss
+    // runden von z.B. 2543 auf 25 um eine endliche abfrage zu haben weil echter strom und gewünschter strom wsl nie 100% gleich sind
+    while (real_value_current / 100 != current / 100)
+    {
     // je nachdem ob zu hoch oder niedrieg den duty cycle verändern
     if (real_value_current > current)
     {
@@ -222,11 +224,13 @@ void Motor_current_stabelazation(int current, bool direction)
     // nochmal einlesen
     delay(10);
     real_value_current = 0;//Read current wobei dieser in mA zurückgegeben werden muss
-  }
+    }*/
 }
 
 double *getAngular_Velocity_IMU()
 {
+  unsigned long break_time_start = 0;
+  unsigned long break_time_end = 0;
   //get Angular
   imu::Vector<3> euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
   //gets X from the angular vector
@@ -235,11 +239,17 @@ double *getAngular_Velocity_IMU()
   //start of timer
   time_start = millis();
   //waits for Angular change
+  break_time_start = millis(); //Schirch
   while (Angular_end == Angular_start)
   {
     imu::Vector<3> euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
     Angular_end = euler.y();
     Angular = Angular_end;
+    break_time_end = millis();
+    if((break_time_start - break_time_end)>= 10)
+    {
+      break;
+    }
   }
   IMU_Angular[0] = Angular;
   //if angular changed delta Angular and delta time is calculated
@@ -254,7 +264,7 @@ double *getAngular_Velocity_IMU()
   IMU_Angular[1] = Angular_Velocity;
   time_start = 0;
   time_end = 0;
-  /*
+/*
   Serial.print("X: ");
   Serial.print(euler.x());
   Serial.print("  ");
@@ -266,21 +276,29 @@ double *getAngular_Velocity_IMU()
   Serial.print("Z: ");
   Serial.print(euler.z());
   Serial.println("  ");
-  */
+*/
   return IMU_Angular;
 }
 
 double *getAngular_Velocity_Encoder()
 {
+  unsigned long break_time_start = 0;
+  unsigned long break_time_end = 0;
   Angular_start_E = Get_angle_motor();
   Angular_end_E = Angular_start_E;
   //start of timer
   time_start_E = millis();
   //waits for Angular change
+  break_time_start = millis(); //Schirch
   while (Angular_end_E == Angular_start_E)
   {
     Angular_end_E = Get_angle_motor();
     Angular_E = Angular_end_E;
+    break_time_end = millis();
+    if((break_time_start - break_time_end)>= 10)
+    {
+      break;
+    }
   }
   Encoder_Angular[0] = Angular_E;
   //if angular changed delta Angular and delta time is calculated
@@ -303,7 +321,7 @@ double Sollcurrent = 0;
 double K_DATA[4] = { -154.2282, -9.8961, 10, 11.3146};
 Matrix K(1, 4, K_DATA);
 double Km = 25.1 * 0.001;
-double Data_Matrix[4] = {0,0,0,0};
+double Data_Arr[4] = {0, 0, 0, 0};
 
 void setup() {
   pinMode(CHA, INPUT);
@@ -319,52 +337,74 @@ void setup() {
   Serial.println("Found BNO055 chip");
 
   /*
-  Serial.println("Adafruit INA260 Test");
-  if (!ina260.begin())
-  {
+    Serial.println("Adafruit INA260 Test");
+    if (!ina260.begin())
+    {
     Serial.println("Couldn't find INA260 chip");
     while (1);
-  }
-  Serial.println("Found INA260 chip");
+    }
+    Serial.println("Found INA260 chip");
   */
   delay(1000);
+  Serial.println("System ist bereit!");
 }
 
 void loop() {
 
   getAngular_Velocity_IMU();
-  getAngular_Velocity_Encoder(); 
+  Serial.println("Nach IMU");
+  getAngular_Velocity_Encoder();
+  Serial.println("Nach Encoder");
 
-  Data_Matrix[0] = IMU_Angular[0];
-  Data_Matrix[1] = IMU_Angular[1];
-  Data_Matrix[2] = Encoder_Angular[2];
-  Data_Matrix[3] = Encoder_Angular[4];
+  Data_Arr[0] = IMU_Angular[0];
+  Data_Arr[1] = IMU_Angular[1];
+  Data_Arr[2] = Encoder_Angular[2];
+  Data_Arr[3] = Encoder_Angular[3];
+  Serial.println("Nach umspeichern");
+  Matrix Data_Matrix(4, 1, Data_Arr);
+  Serial.println("Nach matrix speichern");
+  Data_Matrix = K * Data_Matrix;
+  Serial.println("Nach multi");
+  Drehmoment = getfirstValue(Data_Matrix);
+  Serial.println("Nach getfirstvalue");
+  Drehmoment = Drehmoment * (-1);
+  Serial.println("Nach -1");
+  Sollcurrent = Drehmoment / Km;
+  Serial.println("Nach sollcurrent");
 
-  matrix_skalar_multiplication(K, Data_Matrix[4]);
-  matrix_skalar_multiplication(K, -1);
-  Drehmoment = K;
-  Sollcurrent = Drehmoment/Km;
+  //Serial.print("Sollcurrent: ");
+  //Serial.println(Sollcurrent);
+  if((Sollcurrent - Sollcurrent)== 0)
+  {
+    Motor_current_stabelazation(Sollcurrent, true);
+  }
+  else
+  {
+    if((Sollcurrent - Sollcurrent)!=0)
+    {
+      Motor_current_stabelazation(Sollcurrent, false);
+    }
+  }
+  Serial.println("Motor");
+  //print_matrix(Data_Matrix);
 
-  Serial.print("Sollcurrent: ");
-  Serial.println(Sollcurrent);
 
-  
   /*
-  // Display the data
-  Serial.print("IMU_Angular: ");
-  Serial.print(IMU_Angular[0]);
-  Serial.print("  ");
-  Serial.print(" IMU_Angular_Velocity: ");
-  Serial.println(IMU_Angular[1]);
+    // Display the data
+    Serial.print("IMU_Angular: ");
+    Serial.print(IMU_Angular[0]);
+    Serial.print("  ");
+    Serial.print(" IMU_Angular_Velocity: ");
+    Serial.println(IMU_Angular[1]);
 
-  Serial.print("Encoder_Angular: ");
-  Serial.print(Encoder_Angular[0]);
-  Serial.print("  ");
-  Serial.print("Encoder_Velocity: ");
-  Serial.println(Encoder_Angular[1]);
-
-  Serial.print("Current: ");
-  Serial.print(ina260.readCurrent());
-  Serial.println(" mA");
+    Serial.print("Encoder_Angular: ");
+    Serial.print(Encoder_Angular[0]);
+    Serial.print("  ");
+    Serial.print("Encoder_Velocity: ");
+    Serial.println(Encoder_Angular[1]);
+    /*
+    Serial.print("Current: ");
+    Serial.print(ina260.readCurrent());
+    Serial.println(" mA");
   */
 }
